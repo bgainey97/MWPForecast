@@ -4,11 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>45WS PSFB Mission Weather Product (MWP) & Multi-Model Forecast Tool</title>
-  <!-- Chart.js for Multi-Model Comparison Charts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <!-- SunCalc for exact Solar/Lunar Illumination calculations -->
   <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
-  <!-- html2pdf.js for 1-click Publish to PDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     :root {
@@ -192,15 +189,25 @@
       background: linear-gradient(90deg, #071936 0%, #0d2b59 50%, #071936 100%);
     }
     .mwp-banner-box {
+      position: relative;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 16px;
+      padding: 6px 14px;
       color: #fff;
+      min-height: 64px;
+    }
+    .mwp-banner-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      z-index: 2;
     }
     .mwp-patch {
-      width: 54px;
-      height: 54px;
+      width: 50px;
+      height: 50px;
       border-radius: 50%;
       border: 2px solid #facc15;
       background: radial-gradient(circle, #1e3a8a 0%, #091326 100%);
@@ -216,10 +223,9 @@
     .mwp-banner-text {
       text-align: center;
       font-weight: 800;
-      font-size: 19px;
-      letter-spacing: 0.04em;
+      font-size: 15px;
+      letter-spacing: 0.03em;
       line-height: 1.25;
-      text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
     }
 
     .mwp-meta-table { width: 100%; border-collapse: collapse; font-size: 10.5px; font-weight: 700; }
@@ -274,6 +280,14 @@
       background: radial-gradient(circle at 70% 50%, #092247 0%, #0c311e 45%, #163d22 100%);
       overflow: hidden;
     }
+    .map-bg-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      z-index: 2;
+    }
     .map-coast-svg {
       position: absolute;
       inset: 0;
@@ -281,6 +295,7 @@
       height: 100%;
       opacity: 0.45;
       pointer-events: none;
+      z-index: 1;
     }
     .map-label {
       position: absolute; background: rgba(225, 232, 225, 0.94); color: #000; font-size: 9px;
@@ -313,4 +328,1009 @@
 
     .point-table { width: 100%; border-collapse: collapse; background: var(--panel-dark); border-radius: 8px; overflow: hidden; }
     .point-table th, .point-table td { border: 1px solid var(--border-color); padding: 10px 12px; text-align: left; font-size: 0.88rem; }
-    .point-table 
+    .point-table th { background: #090d16; color: var(--accent); }
+    .badge { padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 0.76rem; display: inline-block; }
+    .badge-YELLOW { background: #fef08a; color: #713f12; }
+    .badge-GREEN  { background: #bbf7d0; color: #14532d; }
+    .badge-RED    { background: #fecaca; color: #7f1d1d; }
+    .badge-NONE   { background: #e2e8f0; color: #1e293b; }
+
+    @media print {
+      body { background: #fff; }
+      .app-navbar, .builder-sidebar, .control-bar, #view-models, #view-points { display: none !important; }
+      #view-mwp, .builder-layout { display: block !important; padding: 0 !important; margin: 0 !important; }
+      .mwp-page { box-shadow: none !important; margin: 0 !important; width: 100% !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="app-navbar">
+    <div class="app-brand">
+      <span>✈️ 45WS PSFB Mission Weather Product (MWP) Suite</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="tab-btn active" onclick="switchTab('mwp', this)">1. MWP Builder &amp; PDF Preview</button>
+      <button class="tab-btn" onclick="switchTab('models', this)">2. Multi-Model Consensus Charts</button>
+      <button class="tab-btn" onclick="switchTab('points', this)">3. DZ / LZ Point Coordinates &amp; Forecasts</button>
+    </div>
+    <div class="action-btns">
+      <button class="btn btn-primary" onclick="fetchAllModelData()">🔄 Pull Live Models (HRRR/GFS/NAM/ECMWF)</button>
+      <button class="btn btn-warning" onclick="applyModelsToMWP()">⚡ Populate MWP from Models</button>
+      <button class="btn btn-success" onclick="publishToPDF()">📄 Publish MWP to PDF</button>
+    </div>
+  </header>
+
+  <!-- TAB 1: MWP BUILDER & LIVE 2-PAGE PRODUCT PREVIEW -->
+  <section id="view-mwp" class="view-section active">
+    <div class="builder-layout">
+
+      <aside class="builder-sidebar">
+        <h3>⚙️ Mission Parameters</h3>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label>Execution Date (Local)</label>
+          <input type="date" id="ctrl-date" onchange="syncMissionParams()" />
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+          <div class="form-group">
+            <label>Start Hour (Local)</label>
+            <select id="ctrl-start-hour" onchange="updateExecutionWindow()">
+              <option value="6">06L (10Z)</option>
+              <option value="9">09L (13Z)</option>
+              <option value="12">12L (16Z)</option>
+              <option value="15" selected>15L (19Z)</option>
+              <option value="18">18L (22Z)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>FL Winds Target (Z)</label>
+            <input type="text" id="ctrl-fl-hour" value="23Z" oninput="document.getElementById('mwp-fl-time').innerText = this.value" />
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px;">
+          <div class="form-group">
+            <label>Forecaster Initials</label>
+            <input type="text" id="ctrl-fcstr" value="BMG" oninput="document.getElementById('mwp-fcstr').innerText = this.value" />
+          </div>
+          <div class="form-group">
+            <label>MEF #</label>
+            <input type="text" id="ctrl-mef" value="21-02" oninput="document.getElementById('mwp-mef-id').innerText = this.value" />
+          </div>
+        </div>
+
+        <h3>🎯 920th &amp; DOS Hazard Map Dots</h3>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-top:0;">
+          Click any dot directly on Page 2 or toggle status below:
+        </p>
+        <div class="dz-control-list" id="sidebar-dz-controls"></div>
+
+        <h3>📡 TAF &amp; Math Actions</h3>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button class="btn btn-primary" style="width:100%;" onclick="generateTAFsFromModel()">
+            🪄 Auto-Generate TAFs from Model Blend
+          </button>
+          <button class="btn btn-warning" style="width:100%;" onclick="recalculateAllTableRows()">
+            🧮 Recalculate XWND, PA &amp; RH
+          </button>
+          <button class="btn btn-success" style="width:100%;" onclick="window.print()">
+            🖨️ Native Print / Save as PDF
+          </button>
+        </div>
+      </aside>
+
+      <div id="mwp-document-wrapper">
+
+        <!-- PAGE 1 -->
+        <div class="mwp-page" id="mwp-page-1">
+          <div class="mwp-frame">
+            <div class="mwp-header-row">
+              <div class="mwp-banner-box">
+                <img class="mwp-banner-img" src="banner.jpg" alt="" onerror="this.style.display='none'" />
+                <div class="mwp-patch">45TH<br/>WX SQ</div>
+                <div class="mwp-banner-text">
+                  PATRICK SPACE FORCE BASE MISSION EXECUTION FORECAST<br/>
+                  <span style="color:#ef4444; font-size:11px;">NOT AN EXECUTION FORECAST UNTIL VALIDATED BY 45WS TECHNICIAN</span><br/>
+                  <span style="font-size:12px;">45WS MISSION FORECASTERS: DSN 467-8485 / COMM 321-853-8485</span>
+                </div>
+                <div class="mwp-patch">39 RQS<br/>301 RQS</div>
+              </div>
+              <table class="mwp-meta-table">
+                <tr>
+                  <td class="mwp-meta-label">DATE:</td>
+                  <td class="mwp-meta-val" contenteditable="true" id="mwp-date">21-Oct-26</td>
+                </tr>
+                <tr>
+                  <td class="mwp-meta-label">VALID TIME:</td>
+                  <td class="mwp-meta-val" contenteditable="true" id="mwp-valid">NTAC</td>
+                </tr>
+                <tr>
+                  <td class="mwp-meta-label">FORECASTER:</td>
+                  <td class="mwp-meta-val" contenteditable="true" id="mwp-fcstr">BMG</td>
+                </tr>
+                <tr>
+                  <td class="mwp-meta-label">MEF #</td>
+                  <td class="mwp-meta-val" contenteditable="true" id="mwp-mef-id">21-02</td>
+                </tr>
+              </table>
+            </div>
+
+            <div class="mwp-black-bar">PSFB (KCOF) TAKE-OFF/LANDING DATA</div>
+
+            <table class="mwp-table" id="kcof-hourly-table">
+              <thead>
+                <tr>
+                  <th style="width:10.5%;">TIME</th>
+                  <th style="width:13.5%;">SKY CON</th>
+                  <th style="width:8.5%;">WIND (KT)</th>
+                  <th style="width:6.5%;">VIS (M)</th>
+                  <th style="width:6.5%;">VIS (SM)</th>
+                  <th style="width:6.5%;">WX</th>
+                  <th style="width:5.5%;">TEMP</th>
+                  <th style="width:5.5%;">DPT</th>
+                  <th style="width:5.5%;">RH</th>
+                  <th style="width:6.5%;">ALSTG</th>
+                  <th style="width:5.5%;">PA</th>
+                  <th style="width:9.5%;">XWND R03/21</th>
+                  <th style="width:9.5%;">XWND R11/29</th>
+                </tr>
+              </thead>
+              <tbody id="kcof-hourly-tbody"></tbody>
+            </table>
+
+            <div class="mwp-mid-grid">
+              <div class="mwp-mid-left">
+                <div class="mwp-subbar">
+                  <span style="margin-left:14px;">FLT LEVEL WINDS / TEMP</span>
+                  <span contenteditable="true" id="mwp-fl-time" style="margin-right:10px;">23Z</span>
+                </div>
+                <table class="mwp-fl-table" id="fl-winds-table">
+                  <thead>
+                    <tr>
+                      <th style="width:26%;">FL (AGL)</th>
+                      <th style="width:48%;">WIND</th>
+                      <th style="width:26%;">TEMP</th>
+                    </tr>
+                  </thead>
+                  <tbody id="fl-winds-tbody">
+                    <tr><td>001</td><td contenteditable="true">03010KT</td><td contenteditable="true">25C</td></tr>
+                    <tr><td>003</td><td contenteditable="true">03015KT</td><td contenteditable="true">25C</td></tr>
+                    <tr><td>005</td><td contenteditable="true">03015KT</td><td contenteditable="true">24C</td></tr>
+                    <tr><td>010</td><td contenteditable="true">03020KT</td><td contenteditable="true">23C</td></tr>
+                    <tr><td>015</td><td contenteditable="true">00302KT</td><td contenteditable="true">21C</td></tr>
+                    <tr><td>020</td><td contenteditable="true">03020KT</td><td contenteditable="true">20C</td></tr>
+                    <tr><td>025</td><td contenteditable="true">03020KT</td><td contenteditable="true">18C</td></tr>
+                    <tr><td>030</td><td contenteditable="true">03020KT</td><td contenteditable="true">17C</td></tr>
+                    <tr><td>040</td><td contenteditable="true">04020KT</td><td contenteditable="true">14C</td></tr>
+                    <tr>
+                      <td colspan="2" style="background:#d9d9d9;">FREEZING LEVEL</td>
+                      <td contenteditable="true" id="mwp-frz-lvl" style="background:#fff;">140</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="mwp-mid-right">
+                <div class="mwp-subbar center">
+                  <span>SOLAR/LUNAR ILLUMINATION (LOCAL) / SEA STATE (FARSHORE 41009)</span>
+                </div>
+                <table class="mwp-solar-table">
+                  <tr>
+                    <td class="mwp-solar-label" style="width:23%;">SUNRISE:</td>
+                    <td contenteditable="true" id="sol-sunrise" style="width:10%;">0727</td>
+                    <td class="mwp-solar-label" style="width:23%;">BEGIN NAUT TL:</td>
+                    <td contenteditable="true" id="sol-bnt" style="width:10%;">0635</td>
+                    <td class="mwp-solar-label" style="width:22%;">BEGIN CIV TL:</td>
+                    <td contenteditable="true" id="sol-bct" style="width:12%;">0703</td>
+                  </tr>
+                  <tr>
+                    <td class="mwp-solar-label">SUNSET:</td>
+                    <td contenteditable="true" id="sol-sunset">1847</td>
+                    <td class="mwp-solar-label">MOONRISE:</td>
+                    <td contenteditable="true" id="sol-moonrise">1605</td>
+                    <td class="mwp-solar-label">END CIV TL:</td>
+                    <td contenteditable="true" id="sol-ect">1911</td>
+                  </tr>
+                  <tr>
+                    <td class="mwp-solar-label">END NAUT TL:</td>
+                    <td contenteditable="true" id="sol-ent">1938</td>
+                    <td class="mwp-solar-label">MOONSET:</td>
+                    <td contenteditable="true" id="sol-moonset">0252</td>
+                    <td class="mwp-solar-label">MOON ILLUM (%)</td>
+                    <td contenteditable="true" id="sol-illum">80.45%</td>
+                  </tr>
+                  <tr>
+                    <td class="mwp-solar-label">SEA TEMP (F):</td>
+                    <td contenteditable="true" id="sea-temp">82F</td>
+                    <td class="mwp-solar-label">AIR TEMP (F):</td>
+                    <td contenteditable="true" id="sea-air-temp">79F</td>
+                    <td class="mwp-solar-label">WAVE HEIGHT:</td>
+                    <td contenteditable="true" id="sea-wave">6-7 FT</td>
+                  </tr>
+                </table>
+
+                <div class="mwp-subbar center">
+                  <span>ACTIVE WATCHES, WARNINGS, AND ADVISORIES</span>
+                </div>
+                <table class="mwp-wwa-table">
+                  <tr>
+                    <td class="mwp-wwa-label">WATCH</td>
+                    <td class="mwp-wwa-val" contenteditable="true" id="wwa-watch"></td>
+                  </tr>
+                  <tr>
+                    <td class="mwp-wwa-label">WARNING</td>
+                    <td class="mwp-wwa-val" contenteditable="true" id="wwa-warning"></td>
+                  </tr>
+                  <tr>
+                    <td class="mwp-wwa-label">ADVISORY</td>
+                    <td class="mwp-wwa-val" contenteditable="true" id="wwa-advisory"></td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+
+            <div class="mwp-black-bar">PLANNING / ALTERNATE &amp; DIVERT FORECASTS</div>
+            <div class="mwp-taf-grid">
+              <div class="mwp-taf-box">
+                <div class="mwp-taf-station" contenteditable="true">KTIX</div>
+                <div class="mwp-taf-text" contenteditable="true" id="taf-ktix">TAF KTIX 211720Z 2118/2218 02014G20KT P6SM FEW040
+FM220000 01010KT P6SM FEW040 SCT050 AMD NOT SKED=</div>
+              </div>
+              <div class="mwp-taf-box">
+                <div class="mwp-taf-station" contenteditable="true">KMLB</div>
+                <div class="mwp-taf-text" contenteditable="true" id="taf-kmlb">TAF KMLB 211720Z 2118/2218 02010G18KT P6SM SCT050
+FM220000 01010KT P6SM FEW040 SCT050=</div>
+              </div>
+              <div class="mwp-taf-box">
+                <div class="mwp-taf-station" contenteditable="true">KSFB</div>
+                <div class="mwp-taf-text" contenteditable="true" id="taf-ksfb">TAF KSFB 211720Z 2118/2218 01008G16KT P6SM FEW050
+FM220000 01010KT P6SM FEW040 SCT050=</div>
+              </div>
+              <div class="mwp-taf-box blackout" id="taf-box-4"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PAGE 2 -->
+        <div class="mwp-page" id="mwp-page-2">
+          <div class="mwp-frame">
+            <div class="mwp-p2-maps-row">
+              <div>
+                <div class="mwp-map-header">
+                  <div>920TH HZRDS VALID:</div>
+                  <div contenteditable="true" id="hzrd-valid-920">15L-24L/19Z-04Z</div>
+                </div>
+                <div class="mwp-map-canvas" id="map-canvas-920">
+                  <img class="map-bg-img" src="map_920.jpg" alt="" onerror="this.style.display='none'" />
+                  <svg class="map-coast-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <path d="M0,0 L52,0 L64,28 L61,42 L72,75 L76,100 L0,100 Z" fill="#1e4620" stroke="#86efac" stroke-width="0.6"/>
+                    <line x1="74" y1="35" x2="45" y2="82" stroke="#38bdf8" stroke-width="0.8" stroke-dasharray="2,2"/>
+                  </svg>
+                </div>
+              </div>
+
+              <div class="mwp-p2-center-gap"></div>
+
+              <div>
+                <div class="mwp-map-header">
+                  <div>DOS HZRDS VALID:</div>
+                  <div contenteditable="true" id="hzrd-valid-dos">15L-24L/19Z-04Z</div>
+                </div>
+                <div class="mwp-map-canvas" id="map-canvas-dos">
+                  <img class="map-bg-img" src="map_dos.jpg" alt="" onerror="this.style.display='none'" />
+                  <svg class="map-coast-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <path d="M0,0 L48,0 L58,34 L54,48 L60,72 L64,100 L0,100 Z" fill="#1e4620" stroke="#86efac" stroke-width="0.6"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="mwp-p2-bottom-grid">
+              <div class="mwp-legend-col">
+                <div class="mwp-legend-header">
+                  DZ HAZARD LEGEND: CONTACT WX FOR SPECIFIC DZ<br/>
+                  TIMING/HAZARDS. SEVERE TURBULENCE/ICING IS<br/>
+                  ASSUMED WITH THUNDERSTORMS.
+                </div>
+                <div class="mwp-legend-item mwp-legend-yellow">
+                  NON-CONVECTIVE LIGHT-MODERATE<br/>TURBULENCE BELOW FL180
+                </div>
+                <div class="mwp-legend-item mwp-legend-yellow">
+                  NON-CONVECTIVE LIGHT-MODERATE<br/>ICING BELOW FL180
+                </div>
+                <div class="mwp-legend-item mwp-legend-yellow">
+                  VICINITY THUNDERSTORMS
+                </div>
+                <div class="mwp-legend-item mwp-legend-red">
+                  NON-CONVECTIVE SEVERE<br/>TURBULENCE/ICING BELOW FL180
+                </div>
+                <div class="mwp-legend-item mwp-legend-red">
+                  THUNDERSTORMS ON DZ
+                </div>
+              </div>
+
+              <div class="mwp-discussion-col">
+                <div class="mwp-discussion-title">HAZARD DISCUSSION</div>
+                <div class="mwp-discussion-sub">
+                  DUE TO LOCAL EFFECTS, HAZARDS ARE SUBJECT TO RAPID CHANGE. CALL 24/7<br/>
+                  OPS CENTER AT 321-853-8485 FOR VALIDATION.
+                </div>
+                <div class="mwp-discussion-body" contenteditable="true" id="mwp-hazard-discussion">LGT-MDT TURBULENCE SFC-060</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 2: MULTI-MODEL CONSENSUS CHARTS -->
+  <section id="view-models" class="view-section">
+    <div class="control-bar">
+      <div class="form-group">
+        <label>Target Airfield / DZ Location</label>
+        <select id="model-loc-select" onchange="fetchAllModelData()"></select>
+      </div>
+      <div class="form-group">
+        <label>Model Blend Strategy</label>
+        <select id="model-blend-mode" onchange="renderAllCharts()">
+          <option value="CONSENSUS">Equal-Weight Multi-Model Consensus (HRRR + GFS + NAM + ECMWF)</option>
+          <option value="HRRR">HRRR Conus (High-Res 3km Priority)</option>
+          <option value="GFS">GFS Global</option>
+          <option value="NAM">NAM Conus</option>
+          <option value="ECMWF">ECMWF IFS</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>API Status</label>
+        <div id="api-status-badge" style="padding:7px 12px; background:#0f172a; border:1px solid #334155; border-radius:5px; font-size:0.85rem; color:#38bdf8;">
+          Ready to fetch live Open-Meteo NWP models
+        </div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3><span>1. Surface Wind Speed (KT) &amp; Gusts — Multi-Model Comparison</span></h3>
+        <div class="chart-container"><canvas id="chart-wind"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3><span>2. KCOF Runway Crosswind Components (R03/21 vs R11/29)</span></h3>
+        <div class="chart-container"><canvas id="chart-xwnd"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3><span>3. Temperature, Dew Point (°C) &amp; Relative Humidity (%)</span></h3>
+        <div class="chart-container"><canvas id="chart-temp"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3><span>4. Cloud Cover Layers (Low / Mid / High %)</span></h3>
+        <div class="chart-container"><canvas id="chart-cloud"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3><span>5. Altimeter Setting (inHg)</span></h3>
+        <div class="chart-container"><canvas id="chart-altimeter"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3><span>6. Flight Level Winds (KT) &amp; Temp (°C) Vertical Profile (001–040 AGL)</span></h3>
+        <div class="chart-container"><canvas id="chart-fl-profile"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: DROP ZONE / LANDING ZONE POINT COORDINATES & FORECASTS -->
+  <section id="view-points" class="view-section">
+    <div class="control-bar" style="justify-content:space-between;">
+      <div>
+        <h3 style="margin:0 0 4px 0; color:var(--accent);">📍 Drop Zone (DZ), Landing Zone (LZ) &amp; Track Point Forecast Registry</h3>
+        <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">
+          Edit coordinates below anytime. Clicking "Run Point Forecasts for All DZs" queries Open-Meteo for each location and evaluates hazard states.
+        </p>
+      </div>
+      <button class="btn btn-primary" onclick="runAllPointForecasts()">🚀 Run Point Forecasts for All DZs/LZs</button>
+    </div>
+
+    <table class="point-table">
+      <thead>
+        <tr>
+          <th>Zone Group</th>
+          <th>Location Name</th>
+          <th>Latitude (°N)</th>
+          <th>Longitude (°W)</th>
+          <th>Map Hazard Status</th>
+          <th>Point Forecast Summary (Valid Window)</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="dz-registry-tbody"></tbody>
+    </table>
+  </section>
+
+  <script>
+    const KCOF_ELEV_FT = 8;
+
+    const LOCATIONS = [
+      { id: "KCOF", name: "PSFB (KCOF) Airfield", group: "AIRFIELD", lat: 28.2348, lon: -80.6101, status: "GREEN" },
+      { id: "FERREIRA", name: "FERREIRA", group: "920TH", lat: 28.5720, lon: -80.5850, mapX: 62.36, mapY: 28.01, lblX: 46.0, lblY: 28.01, status: "YELLOW" },
+      { id: "BAMBAM", name: "BAM BAM/JUDY", group: "920TH", lat: 28.2450, lon: -80.6120, mapX: 60.34, mapY: 41.65, lblX: 38.5, lblY: 41.65, status: "YELLOW" },
+      { id: "AR15V", name: "AR15V", group: "920TH", lat: 28.3800, lon: -80.4200, mapX: 74.71, mapY: 35.16, lblX: 84.5, lblY: 35.16, status: "NONE" },
+      { id: "AVONPARK", name: "AVON PARK/HARDLUCK", group: "920TH", lat: 27.6400, lon: -81.3400, mapX: 24.22, mapY: 77.47, lblX: 52.0, lblY: 77.47, status: "YELLOW" },
+      { id: "ARMARIAN", name: "AR MARIAN", group: "920TH", lat: 27.5800, lon: -81.0200, mapX: 44.68, mapY: 83.67, lblX: 62.5, lblY: 84.8, status: "YELLOW" },
+      { id: "SITE11", name: "SITE 11", group: "DOS", lat: 28.5100, lon: -80.7900, mapX: 51.05, mapY: 36.20, lblX: 36.8, lblY: 36.20, status: "YELLOW" },
+      { id: "NORTHLZ", name: "NORTH LZ", group: "DOS", lat: 28.5250, lon: -80.7550, mapX: 55.05, mapY: 34.71, lblX: 72.0, lblY: 34.71, status: "YELLOW" },
+      { id: "COWPIE", name: "COWPIE", group: "DOS", lat: 28.4200, lon: -80.7700, mapX: 53.92, mapY: 44.16, lblX: 39.2, lblY: 44.16, status: "YELLOW" },
+      { id: "BRIDGE", name: "BRIDGE/PICNIC", group: "DOS", lat: 28.2800, lon: -80.7400, mapX: 58.07, mapY: 55.46, lblX: 36.5, lblY: 55.46, status: "YELLOW" },
+      { id: "RENO", name: "RENO", group: "DOS", lat: 28.1400, lon: -80.7550, mapX: 56.20, mapY: 66.73, lblX: 42.5, lblY: 66.73, status: "YELLOW" },
+      { id: "SOUTHLZ", name: "SOUTH LZ", group: "DOS", lat: 27.9200, lon: -80.7300, mapX: 59.31, mapY: 85.23, lblX: 41.5, lblY: 85.23, status: "YELLOW" }
+    ];
+
+    const DEFAULT_HOURLY_ROWS = [
+      { time: "15-16L/19-20Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "30C", dpt: "24C", rh: "70%", alstg: "29.98", pa: "-50", xw03: "00KT", xw11: "12KT" },
+      { time: "16-17L/20-21Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "30C", dpt: "24C", rh: "70%", alstg: "29.98", pa: "-50", xw03: "00KT", xw11: "12KT" },
+      { time: "17-18L/21-22Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "30C", dpt: "24C", rh: "70%", alstg: "29.98", pa: "-50", xw03: "00KT", xw11: "12KT" },
+      { time: "18-19L/22-23Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "30C", dpt: "24C", rh: "70%", alstg: "29.98", pa: "-50", xw03: "00KT", xw11: "12KT" },
+      { time: "19-20L/23-00Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "30C", dpt: "24C", rh: "70%", alstg: "29.99", pa: "-60", xw03: "00KT", xw11: "12KT" },
+      { time: "20-21L/00-01Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "30C", dpt: "24C", rh: "70%", alstg: "29.99", pa: "-60", xw03: "00KT", xw11: "12KT" },
+      { time: "21-22L/01-02Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "29C", dpt: "24C", rh: "74%", alstg: "29.99", pa: "-60", xw03: "00KT", xw11: "12KT" },
+      { time: "22-23L/02-03Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "28C", dpt: "25C", rh: "84%", alstg: "29.99", pa: "-60", xw03: "00KT", xw11: "12KT" },
+      { time: "23-24L/03-04Z", sky: "SCT050 BKN065\nBKN100", wind: "03012", visM: "9999", visSM: "10SM", wx: "NSW", temp: "28C", dpt: "25C", rh: "84%", alstg: "29.99", pa: "-60", xw03: "00KT", xw11: "12KT" }
+    ];
+
+    let multiModelStore = {};
+    let chartInstances = {};
+
+    function calcCrosswind(windStr, rwyHeadingDeg) {
+      const clean = (windStr || "").trim().toUpperCase().replace("KT", "");
+      if (clean.length < 5 || clean.startsWith("VRB")) return "00KT";
+      const dir = parseInt(clean.substring(0, 3), 10);
+      const spdMatch = clean.substring(3).match(/^(\d{2,3})/);
+      if (isNaN(dir) || !spdMatch) return "00KT";
+      const spd = parseInt(spdMatch[1], 10);
+      const rad = ((dir - rwyHeadingDeg) * Math.PI) / 180;
+      const xw = Math.round(Math.abs(spd * Math.sin(rad)));
+      return String(xw).padStart(2, "0") + "KT";
+    }
+
+    function calcPressureAltitude(alstgStr) {
+      const val = parseFloat(alstgStr);
+      if (isNaN(val)) return "-50";
+      const rawPA = (29.92 - val) * 1000 + KCOF_ELEV_FT;
+      return String(Math.round(rawPA / 10) * 10);
+    }
+
+    function calcRelativeHumidity(tempStr, dptStr) {
+      const T = parseFloat((tempStr || "").replace("C", ""));
+      const Td = parseFloat((dptStr || "").replace("C", ""));
+      if (isNaN(T) || isNaN(Td)) return "70%";
+      const es = 6.112 * Math.exp((17.67 * T) / (T + 243.5));
+      const e  = 6.112 * Math.exp((17.67 * Td) / (Td + 243.5));
+      const rh = Math.min(100, Math.max(1, Math.round((e / es) * 100)));
+      return rh + "%";
+    }
+
+    function recalculateRow(tr) {
+      const cells = tr.querySelectorAll("td");
+      if (cells.length < 13) return;
+      const wind  = cells[2].innerText.trim();
+      const temp  = cells[6].innerText.trim();
+      const dpt   = cells[7].innerText.trim();
+      const alstg = cells[9].innerText.trim();
+
+      cells[8].innerText  = calcRelativeHumidity(temp, dpt);
+      cells[10].innerText = calcPressureAltitude(alstg);
+      cells[11].innerText = calcCrosswind(wind, 30);
+      cells[12].innerText = calcCrosswind(wind, 110);
+    }
+
+    function recalculateAllTableRows() {
+      document.querySelectorAll("#kcof-hourly-tbody tr").forEach(recalculateRow);
+    }
+
+    function updateSolarLunarForDate(dateObj) {
+      if (typeof SunCalc === "undefined") return;
+      const lat = 28.2348, lon = -80.6101;
+      const times = SunCalc.getTimes(dateObj, lat, lon);
+      const moonTimes = SunCalc.getMoonTimes(dateObj, lat, lon);
+      const moonIllum = SunCalc.getMoonIllumination(dateObj);
+
+      const fmtLocal = (d) => {
+        if (!d || isNaN(d.getTime())) return "----";
+        return d.toLocaleTimeString("en-US", {
+          timeZone: "America/New_York",
+          hour12: false,
+          hour: "2-digit",
+          minute: "2-digit"
+        }).replace(":", "");
+      };
+
+      document.getElementById("sol-sunrise").innerText  = fmtLocal(times.sunrise);
+      document.getElementById("sol-sunset").innerText   = fmtLocal(times.sunset);
+      document.getElementById("sol-bnt").innerText      = fmtLocal(times.nauticalDawn);
+      document.getElementById("sol-ent").innerText      = fmtLocal(times.nauticalDusk);
+      document.getElementById("sol-bct").innerText      = fmtLocal(times.dawn);
+      document.getElementById("sol-ect").innerText      = fmtLocal(times.dusk);
+      document.getElementById("sol-moonrise").innerText = fmtLocal(moonTimes.rise);
+      document.getElementById("sol-moonset").innerText  = fmtLocal(moonTimes.set);
+      document.getElementById("sol-illum").innerText    = (moonIllum.fraction * 100).toFixed(2) + "%";
+    }
+
+    function renderHourlyTable(rows) {
+      const tbody = document.getElementById("kcof-hourly-tbody");
+      tbody.innerHTML = "";
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td contenteditable="true">${r.time}</td>
+          <td contenteditable="true" style="white-space:pre-line;">${r.sky}</td>
+          <td contenteditable="true" onblur="recalculateRow(this.parentElement)">${r.wind}</td>
+          <td contenteditable="true">${r.visM}</td>
+          <td contenteditable="true">${r.visSM}</td>
+          <td contenteditable="true">${r.wx}</td>
+          <td contenteditable="true" onblur="recalculateRow(this.parentElement)">${r.temp}</td>
+          <td contenteditable="true" onblur="recalculateRow(this.parentElement)">${r.dpt}</td>
+          <td contenteditable="true">${r.rh}</td>
+          <td contenteditable="true" onblur="recalculateRow(this.parentElement)">${r.alstg}</td>
+          <td contenteditable="true">${r.pa}</td>
+          <td contenteditable="true">${r.xw03}</td>
+          <td contenteditable="true">${r.xw11}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderMapOverlays() {
+      const map920 = document.getElementById("map-canvas-920");
+      const mapDOS = document.getElementById("map-canvas-dos");
+
+      map920.querySelectorAll(".map-label, .map-dot").forEach(e => e.remove());
+      mapDOS.querySelectorAll(".map-label, .map-dot").forEach(e => e.remove());
+
+      const sidebarList = document.getElementById("sidebar-dz-controls");
+      sidebarList.innerHTML = "";
+
+      LOCATIONS.filter(l => l.group !== "AIRFIELD").forEach((loc) => {
+        const container = loc.group === "920TH" ? map920 : mapDOS;
+
+        const lbl = document.createElement("div");
+        lbl.className = "map-label";
+        lbl.style.left = loc.lblX + "%";
+        lbl.style.top  = loc.lblY + "%";
+        lbl.innerText  = loc.name;
+        container.appendChild(lbl);
+
+        const dot = document.createElement("div");
+        dot.className = "map-dot";
+        dot.style.left = loc.mapX + "%";
+        dot.style.top  = loc.mapY + "%";
+        dot.dataset.status = loc.status;
+        dot.title = `${loc.name} (${loc.status}) - Click to cycle hazard status`;
+        if (loc.id === "AR15V" && loc.status === "NONE") {
+          dot.style.display = "none";
+        }
+        dot.onclick = () => cycleLocationStatus(loc.id);
+        container.appendChild(dot);
+
+        const item = document.createElement("div");
+        item.className = "dz-item";
+        item.innerHTML = `
+          <span><strong>${loc.group}:</strong> ${loc.name}</span>
+          <select onchange="setLocationStatus('${loc.id}', this.value)">
+            <option value="GREEN" ${loc.status === "GREEN" ? "selected" : ""}>🟢 GREEN</option>
+            <option value="YELLOW" ${loc.status === "YELLOW" ? "selected" : ""}>🟡 YELLOW</option>
+            <option value="RED" ${loc.status === "RED" ? "selected" : ""}>🔴 RED</option>
+            <option value="NONE" ${loc.status === "NONE" ? "selected" : ""}>⚪ TRACK ONLY</option>
+          </select>
+        `;
+        sidebarList.appendChild(item);
+      });
+
+      renderDZRegistryTable();
+    }
+
+    function cycleLocationStatus(id) {
+      const order = ["GREEN", "YELLOW", "RED"];
+      const loc = LOCATIONS.find(l => l.id === id);
+      if (!loc) return;
+      const idx = order.indexOf(loc.status);
+      loc.status = order[(idx + 1) % order.length];
+      renderMapOverlays();
+    }
+
+    function setLocationStatus(id, newStatus) {
+      const loc = LOCATIONS.find(l => l.id === id);
+      if (!loc) return;
+      loc.status = newStatus;
+      renderMapOverlays();
+    }
+
+    function renderDZRegistryTable() {
+      const tbody = document.getElementById("dz-registry-tbody");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      LOCATIONS.forEach((loc) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><strong>${loc.group}</strong></td>
+          <td>${loc.name}</td>
+          <td><input type="number" step="0.0001" value="${loc.lat}" style="width:105px; background:#0f172a; color:#fff; border:1px solid #334155; padding:4px;" onchange="updateCoord('${loc.id}', 'lat', this.value)"/></td>
+          <td><input type="number" step="0.0001" value="${loc.lon}" style="width:105px; background:#0f172a; color:#fff; border:1px solid #334155; padding:4px;" onchange="updateCoord('${loc.id}', 'lon', this.value)"/></td>
+          <td><span class="badge badge-${loc.status}">${loc.status}</span></td>
+          <td id="pt-summary-${loc.id}" style="color:var(--text-muted);">${loc.summary || "Click 'Run Point Forecasts' to query NWP data"}</td>
+          <td><button class="btn btn-primary" style="padding:4px 10px; font-size:0.78rem;" onclick="viewLocationCharts('${loc.id}')">📈 View Charts</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateCoord(id, field, val) {
+      const loc = LOCATIONS.find(l => l.id === id);
+      if (loc) loc[field] = parseFloat(val);
+    }
+
+    function viewLocationCharts(id) {
+      const sel = document.getElementById("model-loc-select");
+      sel.value = id;
+      switchTab("models", document.querySelectorAll(".tab-btn")[1]);
+      fetchAllModelData();
+    }
+
+    async function fetchAllModelData() {
+      const selId = document.getElementById("model-loc-select").value || "KCOF";
+      const loc = LOCATIONS.find(l => l.id === selId) || LOCATIONS[0];
+      const badge = document.getElementById("api-status-badge");
+      badge.innerText = `⏳ Pulling HRRR, GFS, NAM & ECMWF for ${loc.name}...`;
+      badge.style.color = "#eab308";
+
+      const hourlyVars = [
+        "temperature_2m", "dew_point_2m", "relative_humidity_2m",
+        "pressure_msl", "cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
+        "visibility", "weather_code", "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
+        "wind_speed_80m", "wind_direction_80m", "temperature_80m",
+        "wind_speed_120m", "wind_direction_120m", "temperature_120m",
+        "temperature_975hPa", "wind_speed_975hPa", "wind_direction_975hPa",
+        "temperature_950hPa", "wind_speed_950hPa", "wind_direction_950hPa",
+        "temperature_925hPa", "wind_speed_925hPa", "wind_direction_925hPa",
+        "temperature_900hPa", "wind_speed_900hPa", "wind_direction_900hPa",
+        "temperature_850hPa", "wind_speed_850hPa", "wind_direction_850hPa",
+        "freezing_level_height"
+      ].join(",");
+
+      const models = [
+        { key: "HRRR", id: "gfs_hrrr" },
+        { key: "GFS",  id: "gfs_global" },
+        { key: "NAM",  id: "ncep_nam_conus" },
+        { key: "ECMWF", id: "ecmwf_ifs025" }
+      ];
+
+      try {
+        const promises = models.map(m =>
+          fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=${hourlyVars}&models=${m.id}&wind_speed_unit=kn&forecast_days=2&timezone=America%2FNew_York`)
+            .then(r => r.json())
+            .then(data => ({ key: m.key, data }))
+            .catch(() => null)
+        );
+
+        const marinePromise = fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=28.508&longitude=-80.185&hourly=wave_height,sea_surface_temperature&length_unit=imperial&temperature_unit=fahrenheit&forecast_days=2&timezone=America%2FNew_York`)
+          .then(r => r.json()).catch(() => null);
+
+        const results = await Promise.all(promises);
+        const marineData = await marinePromise;
+
+        multiModelStore = { marine: marineData };
+        results.forEach(res => {
+          if (res && res.data && res.data.hourly) {
+            multiModelStore[res.key] = res.data.hourly;
+          }
+        });
+
+        buildConsensusModel();
+        renderAllCharts();
+
+        badge.innerText = `✅ Live NWP Data Loaded (${Object.keys(multiModelStore).filter(k => k !== 'marine' && k !== 'CONSENSUS').join(', ')}) for ${loc.name}`;
+        badge.style.color = "#22c55e";
+      } catch (err) {
+        badge.innerText = `⚠️ Offline/Fallback Mode`;
+        badge.style.color = "#f97316";
+      }
+    }
+
+    function buildConsensusModel() {
+      const keys = ["HRRR", "GFS", "NAM", "ECMWF"].filter(k => multiModelStore[k]);
+      if (keys.length === 0) return;
+      const base = multiModelStore[keys[0]];
+      const n = base.time.length;
+      const consensus = { time: [...base.time] };
+
+      Object.keys(base).filter(v => v !== "time").forEach(v => {
+        consensus[v] = new Array(n).fill(0).map((_, i) => {
+          let sum = 0, count = 0;
+          keys.forEach(k => {
+            const val = multiModelStore[k][v] ? multiModelStore[k][v][i] : null;
+            if (val !== null && val !== undefined && !isNaN(val)) {
+              sum += val;
+              count++;
+            }
+          });
+          return count > 0 ? +(sum / count).toFixed(1) : null;
+        });
+      });
+      multiModelStore.CONSENSUS = consensus;
+    }
+
+    function renderAllCharts() {
+      const c = multiModelStore.CONSENSUS;
+      if (!c) return;
+
+      const labels = c.time.slice(0, 36).map(t => {
+        const d = new Date(t);
+        const hrL = String(d.getHours()).padStart(2, "0") + "L";
+        return `${t.slice(5, 10)} ${hrL}`;
+      });
+
+      const colors = { CONSENSUS: "#ffffff", HRRR: "#38bdf8", GFS: "#22c55e", NAM: "#f59e0b", ECMWF: "#c084fc" };
+
+      const windDatasets = [];
+      ["CONSENSUS", "HRRR", "GFS", "NAM", "ECMWF"].forEach(k => {
+        if (!multiModelStore[k]) return;
+        windDatasets.push({
+          label: `${k} Sustained (KT)`,
+          data: multiModelStore[k].wind_speed_10m.slice(0, 36),
+          borderColor: colors[k],
+          borderWidth: k === "CONSENSUS" ? 3 : 1.8,
+          tension: 0.25,
+          pointRadius: 2
+        });
+      });
+      if (c.wind_gusts_10m) {
+        windDatasets.push({
+          label: "Consensus Gust (KT)",
+          data: c.wind_gusts_10m.slice(0, 36),
+          borderColor: "#ef4444",
+          borderDash: [5, 4],
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 2
+        });
+      }
+      createOrUpdateChart("chart-wind", "line", labels, windDatasets, "Knots (KT)");
+
+      const xw03 = c.wind_speed_10m.slice(0, 36).map((spd, i) => {
+        const dir = c.wind_direction_10m[i] || 0;
+        return +(Math.abs(spd * Math.sin(((dir - 30) * Math.PI) / 180))).toFixed(1);
+      });
+      const xw11 = c.wind_speed_10m.slice(0, 36).map((spd, i) => {
+        const dir = c.wind_direction_10m[i] || 0;
+        return +(Math.abs(spd * Math.sin(((dir - 110) * Math.PI) / 180))).toFixed(1);
+      });
+      createOrUpdateChart("chart-xwnd", "line", labels, [
+        { label: "XWND Runway 03/21 (KT)", data: xw03, borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,0.15)", fill: true, tension: 0.25 },
+        { label: "XWND Runway 11/29 (KT)", data: xw11, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.15)", fill: true, tension: 0.25 }
+      ], "Crosswind (KT)");
+
+      createOrUpdateChart("chart-temp", "line", labels, [
+        { label: "Temp (°C)", data: c.temperature_2m.slice(0, 36), borderColor: "#ef4444", tension: 0.25 },
+        { label: "Dew Point (°C)", data: c.dew_point_2m.slice(0, 36), borderColor: "#22c55e", tension: 0.25 },
+        { label: "Rel Humidity (%)", data: c.relative_humidity_2m.slice(0, 36), borderColor: "#38bdf8", borderDash: [4, 4], tension: 0.25 }
+      ], "°C / %");
+
+      createOrUpdateChart("chart-cloud", "bar", labels, [
+        { label: "Low Cloud (%)", data: (c.cloud_cover_low || []).slice(0, 36), backgroundColor: "rgba(56,189,248,0.7)" },
+        { label: "Mid Cloud (%)", data: (c.cloud_cover_mid || []).slice(0, 36), backgroundColor: "rgba(168,85,247,0.65)" },
+        { label: "High Cloud (%)", data: (c.cloud_cover_high || []).slice(0, 36), backgroundColor: "rgba(250,204,21,0.6)" }
+      ], "Cloud Cover (%)");
+
+      const alstgArr = (c.pressure_msl || []).slice(0, 36).map(p => p ? +(p * 0.02953).toFixed(2) : 29.98);
+      createOrUpdateChart("chart-altimeter", "line", labels, [
+        { label: "Altimeter Setting (inHg)", data: alstgArr, borderColor: "#22c55e", tension: 0.25 }
+      ], "inHg");
+
+      const idx = 15;
+      const flLabels = ["001 (100ft)", "003 (300ft)", "005 (500ft)", "010 (1000ft)", "015 (1500ft)", "020 (2000ft)", "025 (2500ft)", "030 (3000ft)", "040 (4000ft)"];
+      const flWind = [
+        c.wind_speed_10m?.[idx] || 10, c.wind_speed_80m?.[idx] || 14, c.wind_speed_120m?.[idx] || 15,
+        c.wind_speed_975hPa?.[idx] || 18, c.wind_speed_950hPa?.[idx] || 19, c.wind_speed_925hPa?.[idx] || 20,
+        c.wind_speed_900hPa?.[idx] || 20, c.wind_speed_900hPa?.[idx] || 20, c.wind_speed_850hPa?.[idx] || 21
+      ];
+      const flTemp = [
+        c.temperature_2m?.[idx] || 25, c.temperature_80m?.[idx] || 25, c.temperature_120m?.[idx] || 24,
+        c.temperature_975hPa?.[idx] || 23, c.temperature_950hPa?.[idx] || 21, c.temperature_925hPa?.[idx] || 20,
+        c.temperature_900hPa?.[idx] || 18, (c.temperature_900hPa?.[idx] || 18) - 1, c.temperature_850hPa?.[idx] || 14
+      ];
+      createOrUpdateChart("chart-fl-profile", "line", flLabels, [
+        { label: "FL Wind Speed (KT)", data: flWind, borderColor: "#38bdf8", backgroundColor: "rgba(56,189,248,0.2)", fill: true },
+        { label: "FL Temperature (°C)", data: flTemp, borderColor: "#ef4444" }
+      ], "KT / °C");
+    }
+
+    function createOrUpdateChart(canvasId, type, labels, datasets, yTitle) {
+      if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+      const ctx = document.getElementById(canvasId).getContext("2d");
+      chartInstances[canvasId] = new Chart(ctx, {
+        type,
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: { legend: { labels: { color: "#e2e8f0", boxWidth: 12, font: { size: 11 } } } },
+          scales: {
+            x: { ticks: { color: "#94a3b8", maxRotation: 45, font: { size: 10 } }, grid: { color: "rgba(255,255,255,0.06)" } },
+            y: { ticks: { color: "#94a3b8", font: { size: 10 } }, title: { display: true, text: yTitle, color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.08)" } }
+          }
+        }
+      });
+    }
+
+    function formatSkyCondition(low, mid, high) {
+      const layers = [];
+      const toOctaCode = (pct, hgt) => {
+        if (pct >= 88) return `OVC${hgt}`;
+        if (pct >= 52) return `BKN${hgt}`;
+        if (pct >= 25) return `SCT${hgt}`;
+        if (pct >= 10) return `FEW${hgt}`;
+        return null;
+      };
+      const l1 = toOctaCode(low || 0, "035");
+      const l2 = toOctaCode(mid || 0, "065");
+      const l3 = toOctaCode(high || 0, "100");
+      if (l1) layers.push(l1);
+      if (l2) layers.push(l2);
+      if (l3) layers.push(l3);
+      return layers.length > 0 ? layers.join(" ") : "FEW040";
+    }
+
+    function applyModelsToMWP() {
+      const mode = document.getElementById("model-blend-mode").value || "CONSENSUS";
+      const m = multiModelStore[mode] || multiModelStore.CONSENSUS;
+      if (!m) {
+        fetchAllModelData().then(() => applyModelsToMWP());
+        return;
+      }
+
+      const startHrLocal = parseInt(document.getElementById("ctrl-start-hour").value || "15", 10);
+      const newRows = [];
+
+      for (let i = 0; i < 9; i++) {
+        const hrIdx = Math.min(startHrLocal + i, m.time.length - 1);
+        const h1L = (startHrLocal + i) % 24;
+        const h2L = (startHrLocal + i + 1) % 24;
+        const h1Z = (h1L + 4) % 24;
+        const h2Z = (h2L + 4) % 24;
+        const timeStr = `${String(h1L).padStart(2,"0")}-${String(h2L).padStart(2,"0")}L/${String(h1Z).padStart(2,"0")}-${String(h2Z).padStart(2,"0")}Z`;
+
+        const wDir = String(Math.round((m.wind_direction_10m[hrIdx] || 30) / 10) * 10).padStart(3, "0");
+        const wSpd = String(Math.round(m.wind_speed_10m[hrIdx] || 12)).padStart(2, "0");
+        const wGst = Math.round(m.wind_gusts_10m[hrIdx] || 0);
+        const windStr = (wGst - parseInt(wSpd, 10) >= 6) ? `${wDir}${wSpd}G${String(wGst).padStart(2,"0")}` : `${wDir}${wSpd}`;
+
+        const tempC = Math.round(m.temperature_2m[hrIdx] ?? 29) + "C";
+        const dptC  = Math.round(m.dew_point_2m[hrIdx] ?? 24) + "C";
+        const alstg = ((m.pressure_msl[hrIdx] || 1015.2) * 0.02953).toFixed(2);
+        const sky   = formatSkyCondition(m.cloud_cover_low?.[hrIdx], m.cloud_cover_mid?.[hrIdx], m.cloud_cover_high?.[hrIdx]);
+
+        const visMeters = Math.min(9999, Math.round(m.visibility?.[hrIdx] || 16000));
+        const visSM = visMeters >= 9999 ? "10SM" : Math.max(1, Math.round(visMeters / 1609)) + "SM";
+        const wCode = m.weather_code?.[hrIdx] || 0;
+        const wxStr = wCode >= 95 ? "TSRA" : (wCode >= 60 ? "SHRA" : "NSW");
+
+        newRows.push({
+          time: timeStr, sky, wind: windStr, visM: String(visMeters), visSM, wx: wxStr,
+          temp: tempC, dpt: dptC, rh: calcRelativeHumidity(tempC, dptC),
+          alstg, pa: calcPressureAltitude(alstg),
+          xw03: calcCrosswind(windStr, 30), xw11: calcCrosswind(windStr, 110)
+        });
+      }
+
+      renderHourlyTable(newRows);
+      generateTAFsFromModel();
+      switchTab("mwp", document.querySelectorAll(".tab-btn")[0]);
+    }
+
+    function generateTAFsFromModel() {
+      const m = multiModelStore.CONSENSUS;
+      const now = new Date();
+      const dd = String(now.getUTCDate()).padStart(2, "0");
+      const hh = String(now.getUTCHours()).padStart(2, "0");
+      const mm = String(now.getUTCMinutes()).padStart(2, "0");
+      const nextDd = String(new Date(now.getTime() + 86400000).getUTCDate()).padStart(2, "0");
+
+      if (!m) return;
+      const d1 = String(Math.round((m.wind_direction_10m[18] || 20) / 10) * 10).padStart(3, "0");
+      const s1 = String(Math.round(m.wind_speed_10m[18] || 12)).padStart(2, "0");
+      const g1 = String(Math.round(m.wind_gusts_10m[18] || 18)).padStart(2, "0");
+      const d2 = String(Math.round((m.wind_direction_10m[24] || 10) / 10) * 10).padStart(3, "0");
+      const s2 = String(Math.round(m.wind_speed_10m[24] || 10)).padStart(2, "0");
+
+      document.getElementById("taf-ktix").innerText =
+        `TAF KTIX ${dd}${hh}${mm}Z ${dd}18/${nextDd}18 ${d1}${s1}G${g1}KT P6SM FEW040\nFM${nextDd}0000 ${d2}${s2}KT P6SM FEW040 SCT050 AMD NOT SKED=`;
+      document.getElementById("taf-kmlb").innerText =
+        `TAF KMLB ${dd}${hh}${mm}Z ${dd}18/${nextDd}18 ${d1}${s1}G${g1}KT P6SM SCT050\nFM${nextDd}0000 ${d2}${s2}KT P6SM FEW040 SCT050=`;
+      document.getElementById("taf-ksfb").innerText =
+        `TAF KSFB ${dd}${hh}${mm}Z ${dd}18/${nextDd}18 ${d1}${s1}KT P6SM FEW050\nFM${nextDd}0000 ${d2}${s2}KT P6SM FEW040 SCT050=`;
+    }
+
+    async function runAllPointForecasts() {
+      for (const loc of LOCATIONS) {
+        const cell = document.getElementById(`pt-summary-${loc.id}`);
+        if (cell) cell.innerText = "⏳ Querying NWP point forecast...";
+        try {
+          const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code&wind_speed_unit=kn&forecast_days=1&timezone=America%2FNew_York`;
+          const res = await fetch(url).then(r => r.json());
+          if (res && res.hourly) {
+            const h = res.hourly;
+            const maxW = Math.round(Math.max(...h.wind_speed_10m.slice(15, 24)));
+            const maxG = Math.round(Math.max(...h.wind_gusts_10m.slice(15, 24)));
+            const maxWx = Math.max(...h.weather_code.slice(15, 24));
+            const avgT = Math.round(h.temperature_2m[18] || 28);
+
+            if (loc.id !== "AR15V") {
+              if (maxWx >= 95 || maxG >= 30) loc.status = "RED";
+              else if (maxWx >= 50 || maxG >= 18) loc.status = "YELLOW";
+              else loc.status = "GREEN";
+            }
+            loc.summary = `Window Max Wind: ${maxW}KT (Gust ${maxG}KT) | Temp: ${avgT}°C | WxCode: ${maxWx}`;
+          }
+        } catch (e) {
+          loc.summary = "Fallback: 03012KT | 29°C | NSW (LGT-MDT TURB)";
+        }
+      }
+      renderMapOverlays();
+    }
+
+    function publishToPDF() {
+      const mefId = (document.getElementById("mwp-mef-id").innerText || "21-02").trim();
+      const wrapper = document.getElementById("mwp-document-wrapper");
+      const opt = {
+        margin: 0,
+        filename: `PSFB_MWP_${mefId}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+        jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
+        pagebreak: { mode: ["css", "legacy"] }
+      };
+      html2pdf().set(opt).from(wrapper).save();
+    }
+
+    function switchTab(tabKey, btnEl) {
+      document.querySelectorAll(".view-section").forEach(s => s.classList.remove("active"));
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.getElementById(`view-${tabKey}`).classList.add("active");
+      if (btnEl) btnEl.classList.add("active");
+      if (tabKey === "models") renderAllCharts();
+    }
+
+    function syncMissionParams() {
+      const dateVal = document.getElementById("ctrl-date").value;
+      if (!dateVal) return;
+      const d = new Date(dateVal + "T12:00:00");
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      document.getElementById("mwp-date").innerText = `${String(d.getDate()).padStart(2, "0")}-${months[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
+      updateSolarLunarForDate(d);
+    }
+
+    function updateExecutionWindow() {
+      const startHrL = parseInt(document.getElementById("ctrl-start-hour").value, 10);
+      const endHrL = (startHrL + 9) % 24 || 24;
+      const startHrZ = (startHrL + 4) % 24;
+      const endHrZ = (startHrZ + 9) % 24;
+      const validStr = `${String(startHrL).padStart(2,"0")}L-${String(endHrL).padStart(2,"0")}L/${String(startHrZ).padStart(2,"0")}Z-${String(endHrZ).padStart(2,"0")}Z`;
+      document.getElementById("hzrd-valid-920").innerText = validStr;
+      document.getElementById("hzrd-valid-dos").innerText = validStr;
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const sel = document.getElementById("model-loc-select");
+      LOCATIONS.forEach(loc => {
+        const opt = document.createElement("option");
+        opt.value = loc.id;
+        opt.innerText = `${loc.group}: ${loc.name} (${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)})`;
+        sel.appendChild(opt);
+      });
+      document.getElementById("ctrl-date").value = "2026-10-21";
+      renderHourlyTable(DEFAULT_HOURLY_ROWS);
+      renderMapOverlays();
+      fetchAllModelData();
+    });
+  </script>
+</body>
+</html>
